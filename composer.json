@@ -1,5 +1,5 @@
 {
-    "name": "hydra/view",
+    "name": "hydrakit/view",
     "description": "Native PHP templating for the Hydra PHP framework",
     "type": "library",
     "license": "MIT",
@@ -27,11 +27,11 @@
     ],
     "require": {
         "php": ">=8.2",
-        "hydra/csrf": "*"
+        "hydrakit/csrf": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
-        "hydra/session": "*"
+        "hydrakit/session": "*"
     },
     "minimum-stability": "dev",
     "prefer-stable": true
