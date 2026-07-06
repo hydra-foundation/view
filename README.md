@@ -2,7 +2,7 @@
 
 Native PHP templating — no compilation step, no new syntax, no cache directory.
 A template is a plain `.php` file; the engine gives it Twig-style inheritance and
-escape-by-default safety while staying ordinary PHP you can read top to bottom.
+escape-by-convention safety while staying ordinary PHP you can read top to bottom.
 
 ## The seam
 
@@ -22,9 +22,13 @@ echo $view->render('home', ['name' => 'Will']);
 The `$this` a template sees is a per-render `Template`, so nested partials and
 layout chains never stomp each other's state. The vocabulary:
 
-- `$this->e($value)` — escape for HTML. **Everything is escaped by default**;
-  the *only* way to emit raw markup is to wrap it in `HtmlView`, so forgetting a
-  mark can only ever over-escape, never under-escape.
+- `$this->e($value)` — escape for HTML. Escaping is **by convention, not by
+  default**: templates are ordinary PHP, so a bare `<?= $x ?>` emits raw output —
+  always route dynamic values through `e()`. Within `e()`, every value is
+  treated as untrusted; the *only* way to emit raw markup through it is to wrap
+  the value in `HtmlView`, so forgetting the `HtmlView` mark can only ever
+  over-escape. Forgetting `e()` itself, however, under-escapes — that
+  discipline is on the template author.
 - `$this->extends('layouts/base')` — wrap this template in a layout. The child's
   leftover output becomes the layout's `content` section. Chains to any depth.
 - `$this->start('title') … $this->stop()` / `$this->section('title', $default)` —

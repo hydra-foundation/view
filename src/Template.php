@@ -108,6 +108,10 @@ final class Template
      * and pass through untouched; everything else — including any other
      * Stringable value object — is treated as untrusted and escaped, so
      * forgetting to mark a value can only ever over-escape, never under-escape.
+     *
+     * That guarantee only covers output routed through e(): these are native
+     * PHP templates, so a bare `<?= $x ?>` bypasses e() and emits raw output.
+     * Escaping is by convention — every dynamic value must go through e().
      */
     public function e(string|int|float|bool|Stringable|null $value): string
     {

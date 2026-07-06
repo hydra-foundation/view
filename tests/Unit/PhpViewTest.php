@@ -9,30 +9,54 @@ use Hydra\Session\Stores\ArraySessionStore;
 use Hydra\View\HtmlView;
 use Hydra\View\PhpView;
 use Hydra\View\Contracts\ViewInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
 final class PhpViewTest extends TestCase
 {
+    private string $root;
     private string $dir;
     private PhpView $view;
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/hydra-views-' . uniqid('', true);
-        mkdir($this->dir);
+        // The view base path is a subdirectory of a scratch root so the
+        // traversal tests have a real, existing PHP file one level up
+        // ('../secret') to try to escape to — proving containment, not just
+        // "file didn't exist".
+        $this->root = sys_get_temp_dir() . '/hydra-views-' . uniqid('', true);
+        $this->dir = $this->root . '/views';
+        mkdir($this->dir, 0777, true);
+        file_put_contents($this->root . '/secret.php', '<?php echo "TOP-SECRET";');
         $this->view = new PhpView($this->dir);
     }
 
     protected function tearDown(): void
     {
-        array_map('unlink', glob($this->dir . '/*.php') ?: []);
-        rmdir($this->dir);
+        $this->removeDir($this->root);
+    }
+
+    private function removeDir(string $dir): void
+    {
+        foreach (scandir($dir) ?: [] as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+            $path = $dir . '/' . $entry;
+            is_dir($path) ? $this->removeDir($path) : unlink($path);
+        }
+        rmdir($dir);
     }
 
     private function writeTemplate(string $name, string $contents): void
     {
-        file_put_contents($this->dir . '/' . $name . '.php', $contents);
+        $path = $this->dir . '/' . $name . '.php';
+        $subdir = dirname($path);
+        if (!is_dir($subdir)) {
+            mkdir($subdir, 0777, true);
+        }
+        file_put_contents($path, $contents);
     }
 
     public function testIsViewInterface(): void
@@ -47,7 +71,7 @@ final class PhpViewTest extends TestCase
         $this->assertSame('Hello, Will!', $this->view->render('hello', ['name' => 'Will']));
     }
 
-    public function testEscapesUntrustedDataByDefault(): void
+    public function testEHelperEscapesUntrustedData(): void
     {
         $this->writeTemplate('x', '<?= $this->e($input) ?>');
 
@@ -135,6 +159,67 @@ final class PhpViewTest extends TestCase
     {
         $this->expectException(RuntimeException::class);
         $this->view->render('does-not-exist');
+    }
+
+    public function testRendersTemplateInASubdirectory(): void
+    {
+        $this->writeTemplate('admin/users', 'Users: <?= $this->e($count) ?>');
+
+        $this->assertSame('Users: 3', $this->view->render('admin/users', ['count' => 3]));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function traversalTemplateNames(): array
+    {
+        return [
+            'parent directory'            => ['../secret'],
+            'deep traversal'              => ['../../etc/passwd'],
+            'traversal behind real prefix' => ['admin/../../secret'],
+            'absolute path'               => ['/etc/passwd'],
+        ];
+    }
+
+    #[DataProvider('traversalTemplateNames')]
+    public function testTraversalIsRejectedWithoutExecutingOrLeakingThePath(string $template): void
+    {
+        // 'admin/../../secret' needs the intermediate directory to exist,
+        // otherwise realpath() fails for the wrong reason and the test would
+        // not exercise the containment check.
+        mkdir($this->dir . '/admin');
+
+        try {
+            $this->view->render($template);
+            $this->fail('expected traversal to be rejected');
+        } catch (RuntimeException $e) {
+            // Same exception as a plain miss, the escaped-to file was never
+            // include()d, and no absolute filesystem path is disclosed.
+            $this->assertStringNotContainsString('TOP-SECRET', $e->getMessage());
+            $this->assertStringNotContainsString($this->root, $e->getMessage());
+        }
+    }
+
+    public function testTraversalToAnExistingFileIsIndistinguishableFromAMiss(): void
+    {
+        // '../secret.php' exists, '../absent.php' does not; the messages must
+        // match so a probe cannot use the renderer as a file-exists oracle.
+        $messageFor = function (string $template): string {
+            try {
+                $this->view->render($template);
+                $this->fail('expected a RuntimeException');
+            } catch (RuntimeException $e) {
+                return str_replace($template, '', $e->getMessage());
+            }
+        };
+
+        $this->assertSame($messageFor('../secret'), $messageFor('../absent'));
+    }
+
+    public function testNullByteInTemplateNameIsRejected(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->view->render("hello\0../secret");
     }
 
     public function testInternalVariableNamesAreNotClobberedByData(): void

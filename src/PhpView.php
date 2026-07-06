@@ -41,18 +41,41 @@ final class PhpView implements ViewInterface
     }
 
     /**
-     * Resolve a template name to a readable file path.
+     * Resolve a template name to a readable file path, contained to the base path.
+     *
+     * Template names can come from request data (route params picking a view),
+     * and the resolved file is include()d — so a name that escapes the base
+     * path is LFI straight into RCE. realpath() collapses every `../` and
+     * symlink in the candidate, and the resolved path must sit strictly under
+     * the resolved base path. Both failure modes — genuinely missing template
+     * and escape attempt — throw the SAME exception, with no filesystem path
+     * in the message, so a probing attacker learns neither the directory
+     * layout nor whether a file outside the view root exists.
      *
      * @internal called by {@see Template}
      */
     public function locate(string $template): string
     {
-        $path = $this->basePath . '/' . $template . '.php';
-
-        if (!is_file($path)) {
-            throw new RuntimeException("View not found: \"{$template}\" (looked in {$path}).");
+        // A null byte is never a legitimate template name, and the filesystem
+        // calls below would throw a ValueError on it — reject it up front
+        // (and don't echo the poisoned name back).
+        if (str_contains($template, "\0")) {
+            throw new RuntimeException('View not found.');
         }
 
-        return $path;
+        $root = realpath($this->basePath);
+        $real = $root === false
+            ? false
+            : realpath($this->basePath . '/' . $template . '.php');
+
+        if (
+            $real === false
+            || !str_starts_with($real, $root . DIRECTORY_SEPARATOR)
+            || !is_file($real)
+        ) {
+            throw new RuntimeException("View not found: \"{$template}\".");
+        }
+
+        return $real;
     }
 }
