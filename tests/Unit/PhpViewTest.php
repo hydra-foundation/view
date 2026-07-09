@@ -168,6 +168,29 @@ final class PhpViewTest extends TestCase
         $this->assertSame('Users: 3', $this->view->render('admin/users', ['count' => 3]));
     }
 
+    public function testRendersADeeplyNestedTemplate(): void
+    {
+        // The containment check must not penalize legitimate nesting: a name
+        // with several path segments resolves and renders like any other.
+        $this->writeTemplate('sub/dir/template', 'Deep: <?= $this->e($n) ?>');
+
+        $this->assertSame('Deep: 7', $this->view->render('sub/dir/template', ['n' => 7]));
+    }
+
+    public function testTraversalThatStaysInsideTheRootStillRenders(): void
+    {
+        // '../' is only dangerous when it escapes the view root. A name whose
+        // '..' segments collapse back to a file still under the root is a
+        // legitimate resolution — realpath() normalizes 'sub/../real' to
+        // 'real', which sits inside the root, so the current code renders it.
+        // (Documents intended behavior: containment is about the resolved
+        // location, not the presence of '..' in the raw name.)
+        mkdir($this->dir . '/sub');
+        $this->writeTemplate('real', 'INSIDE');
+
+        $this->assertSame('INSIDE', $this->view->render('sub/../real'));
+    }
+
     /**
      * @return array<string, array{string}>
      */
