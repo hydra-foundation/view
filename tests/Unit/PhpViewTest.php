@@ -271,7 +271,9 @@ final class PhpViewTest extends TestCase
 
     public function testCsrfRendersAHiddenFieldWithTheSessionToken(): void
     {
-        $guard = new CsrfGuard(new ArraySessionStore);
+        $store = new ArraySessionStore;
+        $store->start();
+        $guard = new CsrfGuard($store);
         $view = new PhpView($this->dir, $guard);
         $this->writeTemplate('form', '<?= $this->csrf() ?>');
 
