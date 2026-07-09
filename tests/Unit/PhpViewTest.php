@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Hydra\View\Tests\Unit;
 
+use Hydra\Core\Security\Signer;
 use Hydra\Csrf\CsrfGuard;
 use Hydra\Session\Stores\ArraySessionStore;
 use Hydra\View\HtmlView;
@@ -296,7 +297,7 @@ final class PhpViewTest extends TestCase
     {
         $store = new ArraySessionStore;
         $store->start();
-        $guard = new CsrfGuard($store);
+        $guard = new CsrfGuard($store, Signer::fromHex(str_repeat('ab', 32)));
         $view = new PhpView($this->dir, $guard);
         $this->writeTemplate('form', '<?= $this->csrf() ?>');
 
